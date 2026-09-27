@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 火箭幾何軌跡模擬器 - 幾何學與物理作業</title>
+    <!-- Tailwind CSS for UI layout and glassmorphism -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- KaTeX for formula rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom scrollbar for control panels */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.3);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(56, 189, 248, 0.6);
+        }
+        /* Translucent Glassmorphism HUD Style */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        /* Custom range slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: rgba(30, 41, 59, 0.8);
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+            transition: all 0.15s ease-in-out;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            scale: 1.2;
+            background: #0284c7;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased select-none">
+
+    <!-- Top Bar Navigation Header -->
+    <header class="h-14 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur px-4 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-sky-500/10 border border-sky-500/30 rounded-lg text-sky-400">
+                <i class="fa-solid font-bold fa-rocket text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-slate-100 text-base leading-none">幾何軌跡與空氣動力模擬系統</h1>
+                <p class="text-xs text-sky-400/80 mt-1">3D Rocket Trajectory & Differential Dynamics Visualizer</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button id="mathFormulaBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-square-root-variable"></i> 幾何原理與微分公式
+            </button>
+            <div class="text-xs px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-slate-400 font-mono">
+                Canvas 3D Engine: <span class="text-emerald-400">Three.js r128</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area Grid -->
+    <main class="flex-1 relative overflow-hidden flex flex-col md:flex-row">
+
+        <!-- LEFT PANEL: Real-time Telemetry & Data (300px wide fixed) -->
+        <aside id="leftHUD" class="w-full md:w-80 glass-panel border-r border-slate-800/60 p-4 flex flex-col space-y-4 overflow-y-auto z-10 shrink-0 max-h-[35vh] md:max-h-none">
+            <div class="flex items-center justify-between border-b border-slate-700/50 pb-2">
+                <span class="text-xs font-bold tracking-wider text-sky-400 uppercase flex items-center gap-2">
+                    <i class="fa-solid fa-gauge-high"></i> 即時飛行遙測數據
+                </span>
+                <span id="engineStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700">
+                    靜止準備中
+                </span>
+            </div>
+
+            <!-- Coordinate Telemetry -->
+            <div class="space-y-2">
+                <div class="text-xs text-slate-400 font-medium flex justify-between">
+                    <span>當前空間座標 (x, y, z)</span>
+                    <span class="text-[10px] text-slate-500">單位: 公尺 (m)</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2 font-mono text-center">
+                    <div class="bg-slate-900/80 p-2 rounded-lg border border-red-500/20">
+                        <div class="text-[10px] text-red-400">X (東西)</div>
+                        <div id="teleX" class="text-sm font-bold text-slate-200 mt-0.5">0.00</div>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded-lg border border-emerald-500/20">
+                        <div class="text-[10px] text-emerald-400">Y (高度)</div>
+                        <div id="teleY" class="text-sm font-bold text-slate-200 mt-0.5">0.00</div>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded-lg border border-sky-500/20">
+                        <div class="text-[10px] text-sky-400">Z (南北)</div>
+                        <div id="teleZ" class="text-sm font-bold text-slate-200 mt-0.5">0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instantaneous Velocities -->
+            <div class="space-y-2">
+                <div class="text-xs text-slate-400 font-medium flex justify-between">
+                    <span>瞬時向量速度 (m/s)</span>
+                    <span id="teleSpeedTotal" class="text-sky-300 font-mono font-bold">0.0 m/s</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2 font-mono text-center">
+                    <div class="bg-slate-900/60 p-1.5 rounded border border-slate-800">
+                        <div class="text-[10px] text-slate-500">Vx</div>
+                        <div id="teleVx" class="text-xs text-slate-300">0.0</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-1.5 rounded border border-slate-800">
+                        <div class="text-[10px] text-slate-500">Vy</div>
+                        <div id="teleVy" class="text-xs text-slate-300">0.0</div>
+                    </div>
+                    <div class="bg-slate-900/60 p-1.5 rounded border border-slate-800">
+                        <div class="text-[10px] text-slate-500">Vz</div>
+                        <div id="teleVz" class="text-xs text-slate-300">0.0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW: Differential Geometry & Frenet Frame Section -->
+            <div class="space-y-2 border-t border-slate-800/80 pt-3">
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-amber-400 font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-compass-drafting"></i> 微分幾何與 Frenet 標架
+                    </span>
+                    <span id="teleCurvature" class="font-mono text-[11px] text-amber-300">κ = 0.000</span>
+                </div>
+
+                <!-- Curvature Radius Card -->
+                <div class="bg-slate-900/90 border border-amber-500/20 p-2 rounded-lg flex justify-between items-center text-xs">
+                    <span class="text-slate-400">曲率半徑 Radius (R = 1/κ):</span>
+                    <span id="teleCurvRadius" class="font-mono font-bold text-amber-400">∞ m</span>
+                </div>
+
+                <!-- Tangent Vector T -->
+                <div class="bg-slate-900/60 p-2 rounded border border-slate-800 space-y-1">
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-red-400 font-bold">單位切線向量 Tangent T</span>
+                        <span class="text-slate-500 text-[10px]">||T|| = 1</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 font-mono text-[11px] text-center">
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Tx:</span> <span id="teleTx">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Ty:</span> <span id="teleTy">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Tz:</span> <span id="teleTz">0.00</span></div>
+                    </div>
+                </div>
+
+                <!-- Principal Normal Vector N -->
+                <div class="bg-slate-900/60 p-2 rounded border border-slate-800 space-y-1">
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-emerald-400 font-bold">主法線向量 Normal N</span>
+                        <span class="text-slate-500 text-[10px]">||N|| = 1</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 font-mono text-[11px] text-center">
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Nx:</span> <span id="teleNx">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Ny:</span> <span id="teleNy">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Nz:</span> <span id="teleNz">0.00</span></div>
+                    </div>
+                </div>
+
+                <!-- Binormal Vector B -->
+                <div class="bg-slate-900/60 p-2 rounded border border-slate-800 space-y-1">
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-sky-400 font-bold">副法線向量 Binormal B</span>
+                        <span class="text-slate-500 text-[10px]">||B|| = 1</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 font-mono text-[11px] text-center">
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Bx:</span> <span id="teleBx">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">By:</span> <span id="teleBy">0.00</span></div>
+                        <div class="bg-slate-950 p-1 rounded text-slate-300"><span class="text-slate-500">Bz:</span> <span id="teleBz">0.00</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Height & Time Stats Cards -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-slate-900/70 border border-slate-800 p-2.5 rounded-lg flex flex-col justify-between">
+                    <span class="text-slate-400">最大高度 (Max Height)</span>
+                    <span id="teleMaxY" class="text-lg font-bold text-amber-400 font-mono mt-1">0.0 m</span>
+                </div>
+                <div class="bg-slate-900/70 border border-slate-800 p-2.5 rounded-lg flex flex-col justify-between">
+                    <span class="text-slate-400">累積總射程 (Distance)</span>
+                    <span id="teleDistance" class="text-lg font-bold text-cyan-400 font-mono mt-1">0.0 m</span>
+                </div>
+            </div>
+
+            <!-- Active Flight Environment Stats -->
+            <div class="bg-slate-900/50 rounded-lg p-3 border border-slate-800/80 space-y-2 text-xs">
+                <div class="flex justify-between text-slate-400">
+                    <span>飛行累積時間:</span>
+                    <span id="teleFlightTime" class="font-mono text-slate-200">0.00 s</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>環境重力加速度 (g):</span>
+                    <span id="teleGravity" class="font-mono text-slate-200">9.80 m/s²</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>發射仰角 / 方位角:</span>
+                    <span id="teleAngles" class="font-mono text-slate-200">45° / 0°</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>環境橫向風速:</span>
+                    <span id="teleWind" class="font-mono text-slate-200">0.0 m/s</span>
+                </div>
+            </div>
+
+            <div class="mt-auto text-[11px] text-slate-500 border-t border-slate-800/60 pt-2 flex justify-between">
+                <span id="gridScaleText">動態網格: 自適應</span>
+                <span class="text-sky-400/70">自由拖拽旋轉3D視角</span>
+            </div>
+        </aside>
+
+        <!-- CENTER CANVAS: Three.js Interactive 3D Visualizer -->
+        <div id="canvasContainer" class="flex-1 relative w-full h-full bg-gradient-to-b from-slate-950 via-slate-900 to-black overflow-hidden">
+            <!-- 3D Canvas element will be dynamically appended here -->
+            
+            <!-- Floating Orientation Gizmo HUD Overlay -->
+            <div class="absolute top-4 left-4 bg-slate-900/80 border border-slate-800/80 backdrop-blur p-2.5 rounded-lg pointer-events-none text-[11px] flex items-center gap-3 font-mono z-10">
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block"></span> X: 東/西 (風速)</div>
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Y: 高度 (重力)</div>
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block"></span> Z: 南/北 (方位)</div>
+            </div>
+
+            <!-- Frenet Triad Legend Overlay -->
+            <div class="absolute bottom-4 left-4 bg-slate-900/85 border border-slate-800 backdrop-blur p-2.5 rounded-lg text-[11px] font-mono z-10 space-y-1.5">
+                <div class="text-amber-400 font-bold mb-1 flex items-center justify-between gap-4">
+                    <span>Frenet 3D 向量標架</span>
+                    <label class="flex items-center gap-1.5 cursor-pointer text-slate-300 font-normal">
+                        <input type="checkbox" id="toggleFrenetVis" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0">
+                        <span>顯示 3D 箭頭</span>
+                    </label>
+                </div>
+                <div class="flex items-center gap-2 text-red-400"><i class="fa-solid fa-arrow-right"></i> T (切線): 運動前進方向</div>
+                <div class="flex items-center gap-2 text-emerald-400"><i class="fa-solid fa-arrow-right"></i> N (主法線): 指向曲率中心</div>
+                <div class="flex items-center gap-2 text-sky-400"><i class="fa-solid fa-arrow-right"></i> B (副法線): 垂直於密切平面</div>
+            </div>
+
+            <!-- Speed Multiplier / View Control Overlay -->
+            <div class="absolute top-4 right-4 bg-slate-900/80 border border-slate-800/80 backdrop-blur p-1.5 rounded-lg flex items-center gap-1 text-xs z-10">
+                <button id="btnZoomToFit" class="px-2.5 py-1 text-sky-300 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded font-medium flex items-center gap-1 transition">
+                    <i class="fa-solid fa-expand"></i> 全景導航 Zoom to Fit
+                </button>
+                <div class="h-4 w-px bg-slate-800 mx-1"></div>
+                <span class="text-slate-400 px-1">模擬速率:</span>
+                <button data-speed="1" class="speed-btn px-2 py-1 rounded bg-sky-500/20 text-sky-400 border border-sky-500/40 font-mono">1x</button>
+                <button data-speed="2" class="speed-btn px-2 py-1 rounded hover:bg-slate-800 text-slate-400 font-mono">2x</button>
+                <button data-speed="5" class="speed-btn px-2 py-1 rounded hover:bg-slate-800 text-slate-400 font-mono">5x</button>
+                <div class="h-4 w-px bg-slate-800 mx-1"></div>
+                <button id="resetCameraBtn" class="px-2 py-1 text-slate-300 hover:text-white hover:bg-slate-800 rounded flex items-center gap-1">
+                    <i class="fa-solid fa-camera-rotate"></i> 視角重設
+                </button>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Control Parameters Sliders & Action Buttons -->
+        <aside id="rightHUD" class="w-full md:w-80 glass-panel border-l border-slate-800/60 p-4 flex flex-col space-y-4 overflow-y-auto z-10 shrink-0 max-h-[45vh] md:max-h-none">
+            <div class="flex items-center justify-between border-b border-slate-700/50 pb-2">
+                <span class="text-xs font-bold tracking-wider text-sky-400 uppercase flex items-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> 飛行幾何與物理參數
+                </span>
+                <button id="resetParamsBtn" class="text-[11px] text-slate-400 hover:text-sky-300 transition flex items-center gap-1">
+                    <i class="fa-solid fa-rotate-left"></i> 重設預設值
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <!-- Slider 1: Gravity -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">重力加速度 ($g$)</label>
+                        <span id="valGravity" class="font-mono text-sky-400 font-semibold">9.8 m/s²</span>
+                    </div>
+                    <input type="range" id="paramGravity" min="0" max="10" step="0.1" value="9.8" class="w-full">
+                </div>
+
+                <!-- Slider 2: Initial Velocity -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">發射初始速度 ($V_0$)</label>
+                        <span id="valInitSpeed" class="font-mono text-sky-400 font-semibold">50 m/s</span>
+                    </div>
+                    <input type="range" id="paramInitSpeed" min="10" max="100" step="1" value="50" class="w-full">
+                </div>
+
+                <!-- Slider 3: Launch Pitch Angle -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">發射仰角 Pitch ($\theta$)</label>
+                        <span id="valPitch" class="font-mono text-emerald-400 font-semibold">60°</span>
+                    </div>
+                    <input type="range" id="paramPitch" min="0" max="90" step="1" value="60" class="w-full">
+                </div>
+
+                <!-- Slider 4: Launch Yaw Angle -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">發射方位角 Yaw ($\phi$)</label>
+                        <span id="valYaw" class="font-mono text-emerald-400 font-semibold">0°</span>
+                    </div>
+                    <input type="range" id="paramYaw" min="0" max="360" step="5" value="0" class="w-full">
+                </div>
+
+                <!-- Slider 5: Thrust Duration -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">引擎推進時間 ($t_{thrust}$)</label>
+                        <span id="valThrustTime" class="font-mono text-amber-400 font-semibold">5 s</span>
+                    </div>
+                    <input type="range" id="paramThrustTime" min="1" max="20" step="0.5" value="5" class="w-full">
+                </div>
+
+                <!-- Slider 6: Thrust Acceleration -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">引擎推進加速度 ($a_{engine}$)</label>
+                        <span id="valThrustAccel" class="font-mono text-amber-400 font-semibold">25 m/s²</span>
+                    </div>
+                    <input type="range" id="paramThrustAccel" min="0" max="50" step="1" value="25" class="w-full">
+                </div>
+
+                <!-- Slider 7: Wind Force -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">環境X軸橫向風力 ($W_x$)</label>
+                        <span id="valWind" class="font-mono text-cyan-400 font-semibold">0 m/s</span>
+                    </div>
+                    <input type="range" id="paramWind" min="-10" max="10" step="0.5" value="0" class="w-full">
+                    <div class="flex justify-between text-[10px] text-slate-500">
+                        <span>-10 (西風)</span>
+                        <span>0 (無風)</span>
+                        <span>+10 (東風)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Action Buttons -->
+            <div class="mt-6 pt-3 border-t border-slate-800/80 space-y-2">
+                <button id="btnLaunch" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 font-bold text-white shadow-lg shadow-sky-500/25 transition active:scale-[0.98] flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-paper-plane"></i> 開始飛行 Launch
+                </button>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btnPause" disabled class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 font-medium text-slate-300 text-xs border border-slate-700 transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-pause"></i> 暫停/繼續
+                    </button>
+                    <button id="btnReset" class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium text-slate-300 text-xs border border-slate-700 transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> 清除重置
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+    </main>
+
+    <!-- Math Theory & Differential Equations Modal -->
+    <div id="mathModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-2xl w-full max-h-[85vh] rounded-2xl p-6 overflow-y-auto space-y-4 border border-indigo-500/30 text-slate-200">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="text-lg font-bold text-indigo-300 flex items-center gap-2">
+                    <i class="fa-solid fa-book-bookmark"></i> 幾何學與 Frenet-Serret 微分幾何方程
+                </h3>
+                <button id="closeMathModal" class="text-slate-400 hover:text-white p-1 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-xs leading-relaxed text-slate-300">
+                <div>
+                    <h4 class="text-sky-400 font-bold text-sm mb-1">1. Frenet-Serret 正交標架定義</h4>
+                    <p class="mb-2">三維空間曲線 $\vec{r}(t)$ 的局部幾何結構由正交單位標架 $(\vec{T}, \vec{N}, \vec{B})$ 與曲率 $\kappa$ 描述：</p>
+                    <div class="bg-slate-900/90 p-3 rounded-lg font-mono text-emerald-300 border border-slate-800 space-y-2">
+                        <div>$$ \text{單位切向量 } \vec{T}(t) = \frac{\vec{r}'(t)}{\|\vec{r}'(t)\|} = \frac{\vec{v}}{\|\vec{v}\|} $$</div>
+                        <div>$$ \text{單位副法向量 } \vec{B}(t) = \frac{\vec{v} \times \vec{a}}{\|\vec{v} \times \vec{a}\|} $$</div>
+                        <div>$$ \text{單位主法向量 } \vec{N}(t) = \vec{B}(t) \times \vec{T}(t) $$</div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-sky-400 font-bold text-sm mb-1">2. 空間曲線曲率 $\kappa$ 與曲率半徑 $R$</h4>
+                    <p class="mb-2">曲率衡量軌跡偏離直線的幾何彎曲程度，可由速度與加速度的外積計算：</p>
+                    <div class="bg-slate-900/90 p-3 rounded-lg font-mono text-emerald-300 border border-slate-800 space-y-1">
+                        <div>$$ \kappa(t) = \frac{\|\vec{v}(t) \times \vec{a}(t)\|}{\|\vec{v}(t)\|^3} $$</div>
+                        <div>$$ R(t) = \frac{1}{\kappa(t)} \quad (\text{曲率半徑 Radius of Curvature}) $$</div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-sky-400 font-bold text-sm mb-1">3. 3D 初速向量球面幾何分解</h4>
+                    <p class="mb-2">發射角由仰角 Pitch ($\theta$) 及方位角 Yaw ($\phi$) 在三維直角坐標系中展開：</p>
+                    <div class="bg-slate-900/90 p-3 rounded-lg font-mono text-emerald-300 border border-slate-800">
+                        $$ v_{x0} = V_0 \cdot \cos(\theta) \cdot \cos(\phi) $$
+                        $$ v_{y0} = V_0 \cdot \sin(\theta) $$
+                        $$ v_{z0} = V_0 \cdot \cos(\theta) \cdot \sin(\phi) $$
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-right pt-2 border-t border-slate-800">
+                <button id="closeMathModal2" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white">
+                    關閉並返回模擬
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global Simulation State Variables
+        const state = {
+            params: {
+                gravity: 9.8,
+                v0: 50,
+                pitch: 60,   // Theta (degrees)
+                yaw: 0,      // Phi (degrees)
+                thrustTime: 5,
+                thrustAccel: 25,
+                windX: 0
+            },
+            simSpeed: 1,
+            isRunning: false,
+            isPaused: false,
+            currentTime: 0,
+            pos: new THREE.Vector3(0, 0, 0),
+            vel: new THREE.Vector3(0, 0, 0),
+            accel: new THREE.Vector3(0, 0, 0),
+            
+            // Frenet-Serret Frame Vectors
+            tangent: new THREE.Vector3(1, 0, 0),
+            normal: new THREE.Vector3(0, 1, 0),
+            binormal: new THREE.Vector3(0, 0, 1),
+            curvature: 0,
+            curvRadius: Infinity,
+
+            trajectoryPoints: [],
+            maxHeight: 0,
+            totalDistance: 0,
+            flightPhase: 'IDLE', // IDLE, THRUST, FREEFALL, LANDED
+            showFrenetVis: true
+        };
+
+        // DOM Element Cache
+        const dom = {
+            // Sliders & Values
+            paramGravity: document.getElementById('paramGravity'),
+            valGravity: document.getElementById('valGravity'),
+            paramInitSpeed: document.getElementById('paramInitSpeed'),
+            valInitSpeed: document.getElementById('valInitSpeed'),
+            paramPitch: document.getElementById('paramPitch'),
+            valPitch: document.getElementById('valPitch'),
+            paramYaw: document.getElementById('paramYaw'),
+            valYaw: document.getElementById('valYaw'),
+            paramThrustTime: document.getElementById('paramThrustTime'),
+            valThrustTime: document.getElementById('valThrustTime'),
+            paramThrustAccel: document.getElementById('paramThrustAccel'),
+            valThrustAccel: document.getElementById('valThrustAccel'),
+            paramWind: document.getElementById('paramWind'),
+            valWind: document.getElementById('valWind'),
+
+            // Buttons
+            btnLaunch: document.getElementById('btnLaunch'),
+            btnPause: document.getElementById('btnPause'),
+            btnReset: document.getElementById('btnReset'),
+            resetParamsBtn: document.getElementById('resetParamsBtn'),
+            resetCameraBtn: document.getElementById('resetCameraBtn'),
+            btnZoomToFit: document.getElementById('btnZoomToFit'),
+            mathFormulaBtn: document.getElementById('mathFormulaBtn'),
+            closeMathModal: document.getElementById('closeMathModal'),
+            closeMathModal2: document.getElementById('closeMathModal2'),
+            mathModal: document.getElementById('mathModal'),
+            toggleFrenetVis: document.getElementById('toggleFrenetVis'),
+
+            // Telemetry Outputs
+            teleX: document.getElementById('teleX'),
+            teleY: document.getElementById('teleY'),
+            teleZ: document.getElementById('teleZ'),
+            teleVx: document.getElementById('teleVx'),
+            teleVy: document.getElementById('teleVy'),
+            teleVz: document.getElementById('teleVz'),
+            teleSpeedTotal: document.getElementById('teleSpeedTotal'),
+
+            // Frenet Telemetry DOM
+            teleTx: document.getElementById('teleTx'),
+            teleTy: document.getElementById('teleTy'),
+            teleTz: document.getElementById('teleTz'),
+            teleNx: document.getElementById('teleNx'),
+            teleNy: document.getElementById('teleNy'),
+            teleNz: document.getElementById('teleNz'),
+            teleBx: document.getElementById('teleBx'),
+            teleBy: document.getElementById('teleBy'),
+            teleBz: document.getElementById('teleBz'),
+            teleCurvature: document.getElementById('teleCurvature'),
+            teleCurvRadius: document.getElementById('teleCurvRadius'),
+
+            teleMaxY: document.getElementById('teleMaxY'),
+            teleDistance: document.getElementById('teleDistance'),
+            teleFlightTime: document.getElementById('teleFlightTime'),
+            teleGravity: document.getElementById('teleGravity'),
+            teleAngles: document.getElementById('teleAngles'),
+            teleWind: document.getElementById('teleWind'),
+            engineStatusBadge: document.getElementById('engineStatusBadge'),
+            gridScaleText: document.getElementById('gridScaleText')
+        };
+
+        // Three.js Core Variables
+        let scene, camera, renderer, controls;
+        let rocketGroup, exhaustParticles, flameLight;
+        let trajectoryLine, trajectoryGeometry;
+        let gridGroup, axisGroup;
+
+        // 3D Arrow Helpers for Frenet Frame Vis
+        let arrowT, arrowN, arrowB, frenetGroup;
+
+        // Initialize 3D Visual Environment
+        function initThree() {
+            const container = document.getElementById('canvasContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x070a12);
+            scene.fog = new THREE.FogExp2(0x070a12, 0.00005);
+
+            // Wide FOV & Massive Far Plane
+            camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 200000);
+            camera.position.set(200, 150, 300);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Orbit Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 + 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 150000;
+            controls.target.set(50, 30, 0);
+
+            // Lighting System
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(500, 1000, 500);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 1;
+            dirLight.shadow.camera.far = 100000;
+            const d = 5000;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Ground & Scalable Environment
+            gridGroup = new THREE.Group();
+            scene.add(gridGroup);
+            axisGroup = new THREE.Group();
+            scene.add(axisGroup);
+            createScalableEnvironment(1000);
+
+            // Create Rocket Model
+            rocketGroup = createRocketModel();
+            scene.add(rocketGroup);
+
+            // Create 3D Frenet Frame Visualization Arrows
+            frenetGroup = new THREE.Group();
+            const arrowLen = 15;
+            arrowT = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), arrowLen, 0xef4444, 3, 2); // T: Red
+            arrowN = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), arrowLen, 0x10b981, 3, 2); // N: Green
+            arrowB = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), arrowLen, 0x0ea5e9, 3, 2); // B: Blue
+            frenetGroup.add(arrowT);
+            frenetGroup.add(arrowN);
+            frenetGroup.add(arrowB);
+            scene.add(frenetGroup);
+
+            // Dynamic Trajectory Line Geometry
+            trajectoryGeometry = new THREE.BufferGeometry();
+            const trajMaterial = new THREE.LineBasicMaterial({
+                color: 0x38bdf8,
+                linewidth: 3,
+                transparent: true,
+                opacity: 0.9
+            });
+            trajectoryLine = new THREE.Line(trajectoryGeometry, trajMaterial);
+            scene.add(trajectoryLine);
+
+            // Window Resize Listener
+            window.addEventListener('resize', onWindowResize);
+
+            // Initial positioning reset
+            resetSimulation();
+        }
+
+        // Dynamically scale ground plane and grid depending on flight distance
+        function createScalableEnvironment(scaleSize) {
+            while(gridGroup.children.length > 0){ gridGroup.remove(gridGroup.children[0]); }
+            while(axisGroup.children.length > 0){ axisGroup.remove(axisGroup.children[0]); }
+
+            const actualSize = Math.max(scaleSize * 3, 2000);
+            const gridHelper = new THREE.GridHelper(actualSize, 80, 0x38bdf8, 0x1e293b);
+            gridHelper.position.y = -0.01;
+            gridGroup.add(gridHelper);
+
+            const groundGeo = new THREE.PlaneGeometry(actualSize * 2, actualSize * 2);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9, metalness: 0.1 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            gridGroup.add(ground);
+
+            const axisLength = actualSize * 0.4;
+            const createAxis = (color, endPos) => {
+                const points = [new THREE.Vector3(0, 0, 0), endPos];
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const mat = new THREE.LineBasicMaterial({ color: color, linewidth: 2 });
+                return new THREE.Line(geo, mat);
+            };
+            axisGroup.add(createAxis(0xef4444, new THREE.Vector3(axisLength, 0, 0))); // X Red
+            axisGroup.add(createAxis(0x10b981, new THREE.Vector3(0, axisLength, 0))); // Y Green
+            axisGroup.add(createAxis(0x0ea5e9, new THREE.Vector3(0, 0, axisLength))); // Z Blue
+
+            if (dom.gridScaleText) {
+                dom.gridScaleText.textContent = `網格範圍: ${(actualSize/1000).toFixed(1)}km`;
+            }
+        }
+
+        // Geometric Rocket Model Construction
+        function createRocketModel() {
+            const rocket = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.6, roughness: 0.2 });
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.4, roughness: 0.3 });
+            const finMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5, roughness: 0.3 });
+
+            const bodyGeo = new THREE.CylinderGeometry(0.8, 0.8, 6, 16);
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 3;
+            body.castShadow = true;
+            rocket.add(body);
+
+            const noseGeo = new THREE.ConeGeometry(0.8, 2.5, 16);
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.y = 7.25;
+            nose.castShadow = true;
+            rocket.add(nose);
+
+            const finShape = new THREE.Shape();
+            finShape.moveTo(0, 0);
+            finShape.lineTo(1.2, -0.8);
+            finShape.lineTo(1.2, 0.8);
+            finShape.lineTo(0, 1.8);
+            const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.1, bevelEnabled: false });
+
+            for (let i = 0; i < 4; i++) {
+                const fin = new THREE.Mesh(finGeo, finMat);
+                fin.rotation.y = (Math.PI / 2) * i;
+                fin.position.y = 0.8;
+                rocket.add(fin);
+            }
+
+            flameLight = new THREE.PointLight(0xffa500, 0, 50);
+            flameLight.position.set(0, -0.5, 0);
+            rocket.add(flameLight);
+
+            const particleCount = 80;
+            const pGeo = new THREE.BufferGeometry();
+            const pPos = new Float32Array(particleCount * 3);
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            const pMat = new THREE.PointsMaterial({
+                color: 0xff6600,
+                size: 2.0,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+            exhaustParticles = new THREE.Points(pGeo, pMat);
+            rocket.add(exhaustParticles);
+
+            return rocket;
+        }
+
+        // Calculate Differential Geometry Frenet Frame (T, N, B) and Curvature
+        function calculateFrenetFrame() {
+            const vLen = state.vel.length();
+
+            if (vLen > 0.001) {
+                // 1. Tangent Vector T = v / ||v||
+                state.tangent.copy(state.vel).normalize();
+
+                // 2. Cross Product v x a for Binormal Direction
+                const vCrossA = new THREE.Vector3().crossVectors(state.vel, state.accel);
+                const vCrossALen = vCrossA.length();
+
+                // Curvature kappa = ||v x a|| / ||v||^3
+                state.curvature = vCrossALen / Math.pow(vLen, 3);
+                state.curvRadius = state.curvature > 0.000001 ? 1 / state.curvature : Infinity;
+
+                if (vCrossALen > 0.00001) {
+                    // 3. Binormal Vector B = (v x a) / ||v x a||
+                    state.binormal.copy(vCrossA).normalize();
+                    // 4. Principal Normal Vector N = B x T
+                    state.normal.crossVectors(state.binormal, state.tangent).normalize();
+                } else {
+                    // Fallback for collinear motion (straight line)
+                    state.binormal.set(0, 0, 1);
+                    state.normal.crossVectors(state.binormal, state.tangent).normalize();
+                }
+            }
+        }
+
+        // Analytical Trajectory Estimation for Dynamic Auto-Camera Framing
+        function calculateTrajectoryBounds() {
+            const p = state.params;
+            const pitchRad = (p.pitch * Math.PI) / 180;
+            const yawRad = (p.yaw * Math.PI) / 180;
+
+            let simPos = new THREE.Vector3(0, 0, 0);
+            let simVel = new THREE.Vector3(
+                p.v0 * Math.cos(pitchRad) * Math.cos(yawRad),
+                p.v0 * Math.sin(pitchRad),
+                p.v0 * Math.cos(pitchRad) * Math.sin(yawRad)
+            );
+
+            let maxH = 0;
+            let dt = 0.1;
+            let t = 0;
+
+            while (simPos.y >= 0 && t < 300) {
+                t += dt;
+                let accel = new THREE.Vector3(p.windX * 0.2, -p.gravity, 0);
+                if (t <= p.thrustTime) {
+                    const thrustX = Math.cos(pitchRad) * Math.cos(yawRad);
+                    const thrustY = Math.sin(pitchRad);
+                    const thrustZ = Math.cos(pitchRad) * Math.sin(yawRad);
+                    accel.add(new THREE.Vector3(thrustX, thrustY, thrustZ).multiplyScalar(p.thrustAccel));
+                }
+                simVel.addScaledVector(accel, dt);
+                simPos.addScaledVector(simVel, dt);
+                if (simPos.y > maxH) maxH = simPos.y;
+            }
+
+            const dist = simPos.distanceTo(new THREE.Vector3(0, 0, 0));
+            return {
+                maxHeight: Math.max(maxH, 50),
+                totalDistance: Math.max(dist, 100)
+            };
+        }
+
+        function autoFitCameraToTrajectory() {
+            const bounds = calculateTrajectoryBounds();
+            const span = Math.max(bounds.maxHeight, bounds.totalDistance, 200);
+
+            createScalableEnvironment(span);
+
+            const pitchRad = (state.params.pitch * Math.PI) / 180;
+            const yawRad = (state.params.yaw * Math.PI) / 180;
+            const midX = (bounds.totalDistance * Math.cos(yawRad)) * 0.4;
+            const midY = bounds.maxHeight * 0.45;
+            const midZ = (bounds.totalDistance * Math.sin(yawRad)) * 0.4;
+
+            const targetCenter = new THREE.Vector3(midX, midY, midZ);
+            const cameraDist = span * 1.5;
+
+            controls.target.copy(targetCenter);
+            camera.position.set(midX + cameraDist * 0.8, midY + cameraDist * 0.6, midZ + cameraDist * 0.9);
+            camera.lookAt(targetCenter);
+            controls.update();
+        }
+
+        function updatePhysics(dt) {
+            if (!state.isRunning || state.isPaused) return;
+
+            state.currentTime += dt;
+            const p = state.params;
+
+            const pitchRad = (p.pitch * Math.PI) / 180;
+            const yawRad = (p.yaw * Math.PI) / 180;
+
+            // Acceleration Vector
+            state.accel.set(p.windX * 0.2, -p.gravity, 0);
+
+            // Phase Determination
+            if (state.currentTime <= p.thrustTime) {
+                state.flightPhase = 'THRUST';
+
+                const thrustX = Math.cos(pitchRad) * Math.cos(yawRad);
+                const thrustY = Math.sin(pitchRad);
+                const thrustZ = Math.cos(pitchRad) * Math.sin(yawRad);
+
+                const thrustVec = new THREE.Vector3(thrustX, thrustY, thrustZ).multiplyScalar(p.thrustAccel);
+                state.accel.add(thrustVec);
+
+                flameLight.intensity = 3 + Math.random() * 2;
+                updateExhaustParticles(true);
+            } else {
+                state.flightPhase = 'FREEFALL';
+                flameLight.intensity = 0;
+                updateExhaustParticles(false);
+
+                state.vel.multiplyScalar(0.999);
+            }
+
+            // Numerical Integration
+            state.vel.addScaledVector(state.accel, dt);
+            state.pos.addScaledVector(state.vel, dt);
+
+            // Frenet Frame Vector Calculation
+            calculateFrenetFrame();
+
+            // Check Ground Impact Collision
+            if (state.pos.y <= 0) {
+                state.pos.y = 0;
+                state.vel.set(0, 0, 0);
+                state.flightPhase = 'LANDED';
+                state.isRunning = false;
+                flameLight.intensity = 0;
+                updateExhaustParticles(false);
+            }
+
+            // Record Trajectory
+            state.trajectoryPoints.push(state.pos.clone());
+            if (state.pos.y > state.maxHeight) state.maxHeight = state.pos.y;
+            state.totalDistance = state.pos.distanceTo(new THREE.Vector3(0, 0, 0));
+
+            // Update Rocket Position and Orientation
+            rocketGroup.position.copy(state.pos);
+
+            if (state.vel.lengthSq() > 0.1) {
+                const targetRotation = new THREE.Quaternion();
+                targetRotation.setFromUnitVectors(new THREE.Vector3(0, 1, 0), state.tangent);
+                rocketGroup.quaternion.slerp(targetRotation, 0.2);
+            }
+
+            // Update 3D Frenet Frame Triad Visualizer
+            frenetGroup.position.copy(state.pos);
+            arrowT.setDirection(state.tangent);
+            arrowN.setDirection(state.normal);
+            arrowB.setDirection(state.binormal);
+            frenetGroup.visible = state.showFrenetVis;
+
+            updateTrajectoryLine();
+            updateTelemetryHUD();
+        }
+
+        function updateExhaustParticles(active) {
+            const positions = exhaustParticles.geometry.attributes.position.array;
+            if (active) {
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i] = (Math.random() - 0.5) * 0.6;
+                    positions[i + 1] = -Math.random() * 3.5 - 0.2;
+                    positions[i + 2] = (Math.random() - 0.5) * 0.6;
+                }
+            } else {
+                for (let i = 0; i < positions.length; i++) {
+                    positions[i] = 0;
+                }
+            }
+            exhaustParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function updateTrajectoryLine() {
+            if (state.trajectoryPoints.length === 0) return;
+            trajectoryGeometry.setFromPoints(state.trajectoryPoints);
+        }
+
+        function updateTelemetryHUD() {
+            dom.teleX.textContent = state.pos.x.toFixed(2);
+            dom.teleY.textContent = state.pos.y.toFixed(2);
+            dom.teleZ.textContent = state.pos.z.toFixed(2);
+
+            dom.teleVx.textContent = state.vel.x.toFixed(1);
+            dom.teleVy.textContent = state.vel.y.toFixed(1);
+            dom.teleVz.textContent = state.vel.z.toFixed(1);
+
+            const speedTotal = state.vel.length();
+            dom.teleSpeedTotal.textContent = `${speedTotal.toFixed(1)} m/s`;
+
+            // Update Frenet Vector HUD Display
+            dom.teleTx.textContent = state.tangent.x.toFixed(2);
+            dom.teleTy.textContent = state.tangent.y.toFixed(2);
+            dom.teleTz.textContent = state.tangent.z.toFixed(2);
+
+            dom.teleNx.textContent = state.normal.x.toFixed(2);
+            dom.teleNy.textContent = state.normal.y.toFixed(2);
+            dom.teleNz.textContent = state.normal.z.toFixed(2);
+
+            dom.teleBx.textContent = state.binormal.x.toFixed(2);
+            dom.teleBy.textContent = state.binormal.y.toFixed(2);
+            dom.teleBz.textContent = state.binormal.z.toFixed(2);
+
+            dom.teleCurvature.textContent = `κ = ${state.curvature.toFixed(4)}`;
+            dom.teleCurvRadius.textContent = isFinite(state.curvRadius) ? `${state.curvRadius.toFixed(1)} m` : '∞ m';
+
+            dom.teleMaxY.textContent = `${state.maxHeight.toFixed(1)} m`;
+            dom.teleDistance.textContent = `${state.totalDistance.toFixed(1)} m`;
+            dom.teleFlightTime.textContent = `${state.currentTime.toFixed(2)} s`;
+
+            switch (state.flightPhase) {
+                case 'IDLE':
+                    dom.engineStatusBadge.textContent = '靜止準備中';
+                    dom.engineStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700';
+                    break;
+                case 'THRUST':
+                    dom.engineStatusBadge.textContent = '全推力推進中';
+                    dom.engineStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse';
+                    break;
+                case 'FREEFALL':
+                    dom.engineStatusBadge.textContent = '慣性滑行中';
+                    dom.engineStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/40';
+                    break;
+                case 'LANDED':
+                    dom.engineStatusBadge.textContent = '已著陸 / 停止';
+                    dom.engineStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+                    break;
+            }
+        }
+
+        function syncParametersFromUI() {
+            state.params.gravity = parseFloat(dom.paramGravity.value);
+            state.params.v0 = parseFloat(dom.paramInitSpeed.value);
+            state.params.pitch = parseFloat(dom.paramPitch.value);
+            state.params.yaw = parseFloat(dom.paramYaw.value);
+            state.params.thrustTime = parseFloat(dom.paramThrustTime.value);
+            state.params.thrustAccel = parseFloat(dom.paramThrustAccel.value);
+            state.params.windX = parseFloat(dom.paramWind.value);
+
+            dom.valGravity.textContent = `${state.params.gravity.toFixed(1)} m/s²`;
+            dom.valInitSpeed.textContent = `${state.params.v0} m/s`;
+            dom.valPitch.textContent = `${state.params.pitch}°`;
+            dom.valYaw.textContent = `${state.params.yaw}°`;
+            dom.valThrustTime.textContent = `${state.params.thrustTime} s`;
+            dom.valThrustAccel.textContent = `${state.params.thrustAccel} m/s²`;
+            dom.valWind.textContent = `${state.params.windX} m/s`;
+
+            dom.teleGravity.textContent = `${state.params.gravity.toFixed(1)} m/s²`;
+            dom.teleAngles.textContent = `${state.params.pitch}° / ${state.params.yaw}°`;
+            dom.teleWind.textContent = `${state.params.windX} m/s`;
+        }
+
+        function launchRocket() {
+            syncParametersFromUI();
+            autoFitCameraToTrajectory();
+
+            const pitchRad = (state.params.pitch * Math.PI) / 180;
+            const yawRad = (state.params.yaw * Math.PI) / 180;
+
+            const vx0 = state.params.v0 * Math.cos(pitchRad) * Math.cos(yawRad);
+            const vy0 = state.params.v0 * Math.sin(pitchRad);
+            const vz0 = state.params.v0 * Math.cos(pitchRad) * Math.sin(yawRad);
+
+            state.pos.set(0, 0, 0);
+            state.vel.set(vx0, vy0, vz0);
+            state.currentTime = 0;
+            state.maxHeight = 0;
+            state.totalDistance = 0;
+            state.trajectoryPoints = [state.pos.clone()];
+            state.isRunning = true;
+            state.isPaused = false;
+            state.flightPhase = 'THRUST';
+
+            calculateFrenetFrame();
+
+            const targetRotation = new THREE.Quaternion();
+            targetRotation.setFromUnitVectors(new THREE.Vector3(0, 1, 0), state.tangent);
+            rocketGroup.quaternion.copy(targetRotation);
+
+            dom.btnPause.disabled = false;
+            dom.btnLaunch.textContent = '重新發射 Launch';
+        }
+
+        function resetSimulation() {
+            state.isRunning = false;
+            state.isPaused = false;
+            state.currentTime = 0;
+            state.pos.set(0, 0, 0);
+            state.vel.set(0, 0, 0);
+            state.accel.set(0, 0, 0);
+            state.trajectoryPoints = [];
+            state.maxHeight = 0;
+            state.totalDistance = 0;
+            state.flightPhase = 'IDLE';
+
+            const pitchRad = (state.params.pitch * Math.PI) / 180;
+            const yawRad = (state.params.yaw * Math.PI) / 180;
+            state.tangent.set(
+                Math.cos(pitchRad) * Math.cos(yawRad),
+                Math.sin(pitchRad),
+                Math.cos(pitchRad) * Math.sin(yawRad)
+            ).normalize();
+            state.normal.set(0, 1, 0);
+            state.binormal.set(0, 0, 1);
+            state.curvature = 0;
+            state.curvRadius = Infinity;
+
+            rocketGroup.position.set(0, 0, 0);
+            const targetRotation = new THREE.Quaternion();
+            targetRotation.setFromUnitVectors(new THREE.Vector3(0, 1, 0), state.tangent);
+            rocketGroup.quaternion.copy(targetRotation);
+
+            frenetGroup.position.set(0, 0, 0);
+            arrowT.setDirection(state.tangent);
+            arrowN.setDirection(state.normal);
+            arrowB.setDirection(state.binormal);
+
+            flameLight.intensity = 0;
+            updateExhaustParticles(false);
+            updateTrajectoryLine();
+            updateTelemetryHUD();
+
+            dom.btnPause.disabled = true;
+            dom.btnPause.innerHTML = '<i class="fa-solid fa-pause"></i> 暫停/繼續';
+        }
+
+        function bindEvents() {
+            const sliders = [
+                dom.paramGravity, dom.paramInitSpeed, dom.paramPitch,
+                dom.paramYaw, dom.paramThrustTime, dom.paramThrustAccel, dom.paramWind
+            ];
+            sliders.forEach(slider => {
+                if (slider) {
+                    slider.addEventListener('input', () => {
+                        syncParametersFromUI();
+                        if (!state.isRunning) resetSimulation();
+                    });
+                }
+            });
+
+            if (dom.btnLaunch) dom.btnLaunch.addEventListener('click', launchRocket);
+
+            if (dom.btnPause) {
+                dom.btnPause.addEventListener('click', () => {
+                    if (!state.isRunning) return;
+                    state.isPaused = !state.isPaused;
+                    dom.btnPause.innerHTML = state.isPaused
+                        ? '<i class="fa-solid fa-play"></i> 繼續飛行'
+                        : '<i class="fa-solid fa-pause"></i> 暫停飛行';
+                });
+            }
+
+            if (dom.btnReset) dom.btnReset.addEventListener('click', resetSimulation);
+            if (dom.btnZoomToFit) dom.btnZoomToFit.addEventListener('click', autoFitCameraToTrajectory);
+
+            if (dom.toggleFrenetVis) {
+                dom.toggleFrenetVis.addEventListener('change', (e) => {
+                    state.showFrenetVis = e.target.checked;
+                    frenetGroup.visible = state.showFrenetVis;
+                });
+            }
+
+            if (dom.resetParamsBtn) {
+                dom.resetParamsBtn.addEventListener('click', () => {
+                    if (dom.paramGravity) dom.paramGravity.value = 9.8;
+                    if (dom.paramInitSpeed) dom.paramInitSpeed.value = 50;
+                    if (dom.paramPitch) dom.paramPitch.value = 60;
+                    if (dom.paramYaw) dom.paramYaw.value = 0;
+                    if (dom.paramThrustTime) dom.paramThrustTime.value = 5;
+                    if (dom.paramThrustAccel) dom.paramThrustAccel.value = 25;
+                    if (dom.paramWind) dom.paramWind.value = 0;
+                    syncParametersFromUI();
+                    resetSimulation();
+                    autoFitCameraToTrajectory();
+                });
+            }
+
+            if (dom.resetCameraBtn) dom.resetCameraBtn.addEventListener('click', autoFitCameraToTrajectory);
+
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.speed-btn').forEach(b => {
+                        b.className = 'speed-btn px-2 py-1 rounded hover:bg-slate-800 text-slate-400 font-mono';
+                    });
+                    e.target.className = 'speed-btn px-2 py-1 rounded bg-sky-500/20 text-sky-400 border border-sky-500/40 font-mono';
+                    state.simSpeed = parseFloat(e.target.dataset.speed);
+                });
+            });
+
+            const toggleModal = (show) => {
+                if (!dom.mathModal) return;
+                if (show) {
+                    dom.mathModal.classList.remove('hidden');
+                    renderMathInElement(dom.mathModal, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false}
+                        ]
+                    });
+                } else {
+                    dom.mathModal.classList.add('hidden');
+                }
+            };
+            if (dom.mathFormulaBtn) dom.mathFormulaBtn.addEventListener('click', () => toggleModal(true));
+            if (dom.closeMathModal) dom.closeMathModal.addEventListener('click', () => toggleModal(false));
+            if (dom.closeMathModal2) dom.closeMathModal2.addEventListener('click', () => toggleModal(false));
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvasContainer');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        let clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const effectiveDt = Math.min(delta, 0.1) * state.simSpeed;
+
+            updatePhysics(effectiveDt);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            initThree();
+            bindEvents();
+            syncParametersFromUI();
+            autoFitCameraToTrajectory();
+            animate();
+        };
+    </script>
+</body>
+</html>
